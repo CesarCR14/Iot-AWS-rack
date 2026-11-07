@@ -49,7 +49,7 @@ Todo es **serverless**: no hay servidores que administrar; cada servicio escala 
 | **DHT22** | Sensor de temperatura (°C) y humedad relativa (%) |
 | **LED RGB integrado (GPIO 48)** | Actuador controlado desde el dashboard |
 | **AWS IoT Core** | Broker MQTT seguro (TLS + certificados X.509) |
-| **Regla de IoT** | Toma cada mensaje del topic y lo guarda en DynamoDB |
+| **Regla de IoT** `save_data_dynamodb` | Toma cada mensaje del topic y lo guarda en DynamoDB |
 | **Amazon DynamoDB** | Base de datos NoSQL con el histórico de lecturas |
 | **AWS Lambda** | Backend: consulta DynamoDB y publica órdenes al actuador |
 | **Amazon API Gateway** | Expone la Lambda como API HTTPS pública con CORS |
@@ -140,9 +140,9 @@ Respuesta de `GET`:
 1. **DynamoDB → Create table** `valores-sensor-rack`:
    - Partition key: `device_id` (String)
    - Sort key: `timestamp` (String)
-2. **IoT Core → Message routing → Rules → Create rule**:
-   - SQL: `SELECT * FROM 'esp32-datos-rack'`
-   - Acción **DynamoDB**: tabla `valores-sensor-rack`, partition key `${device_id}`, sort key `${timestamp}`, columna de datos `payload`.
+2. **IoT Core → Message routing → Rules → Create rule** → nombre `save_data_dynamodb`:
+   - SQL: `SELECT * FROM "esp32-datos-rack"`
+   - Acción **DynamoDB** (Insert a message into a DynamoDB table): tabla `valores-sensor-rack`, partition key `device_id` (STRING) = `${device_id}`, sort key `timestamp` (STRING) = `${timestamp}`, columna de datos `payload`, operación `INSERT`.
    - Rol: **LabRole**.
 3. Verificar en **IoT Core → Test → MQTT test client**, suscrito a `esp32-datos-rack`, y luego en **DynamoDB → Explore items**.
 
