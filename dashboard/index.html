@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monitoreo Rack de TI - IoT</title>
+    <link rel="stylesheet" href="styles.css">
+    <!-- Lucide Icons for clean, professional icons -->
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+</head>
+
+<body>
+    <!-- 
+    DEPLOYMENT INSTRUCTIONS:
+    1. Upload all files (index.html, styles.css, config.js, api.js, ui.js, chart.js, main.js) to S3 bucket root
+    2. Enable Static Website Hosting with index document: index.html
+    3. Ensure bucket CORS allows GET for assets
+    4. Ensure API Gateway CORS is enabled and allows your site domain
+    5. Edit config.js to update API URL if needed
+    -->
+
+    <header>
+        <div class="header-content">
+            <div class="header-title">
+                <i data-lucide="server" class="header-icon"></i>
+                <h1>Monitoreo del Rack de TI</h1>
+            </div>
+            <div class="header-subtitle">Temperatura y humedad en tiempo real · ESP32-S3 + DHT22 + AWS</div>
+        </div>
+    </header>
+
+    <main>
+        <!-- Top Bar -->
+        <section class="top-bar">
+            <div class="device-controls">
+                <div class="control-group">
+                    <i data-lucide="cpu" class="control-icon"></i>
+                    <label for="device-select">Dispositivo</label>
+                    <select id="device-select" aria-label="Select device">
+                        <!-- Options populated by JS -->
+                    </select>
+                </div>
+                <button id="refresh-btn" class="btn btn-primary">
+                    <i data-lucide="refresh-cw" class="btn-icon"></i>
+                    Actualizar
+                </button>
+            </div>
+            <div class="status-indicators">
+                <div class="api-status">
+                    <span id="api-status-badge" class="status-badge" aria-label="API status">
+                        <span class="spinner"></span> Verificando...
+                    </span>
+                </div>
+                <div class="refresh-status">
+                    <span id="last-refresh" class="last-refresh-time" title="Last refresh time">
+                        <i data-lucide="clock" class="refresh-icon"></i>
+                        <span class="refresh-text">Nunca</span>
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Summary Cards -->
+        <section class="summary">
+            <div class="card" id="temp-card">
+                <div class="card-header">
+                    <i data-lucide="thermometer" class="card-icon temp-icon"></i>
+                    <h3>Temperatura</h3>
+                </div>
+                <div class="card-content">
+                    <div class="value">
+                        <span class="spinner"></span>
+                    </div>
+                    <div class="unit">°C</div>
+                </div>
+            </div>
+            <div class="card" id="humidity-card">
+                <div class="card-header">
+                    <i data-lucide="droplets" class="card-icon humidity-icon"></i>
+                    <h3>Humedad</h3>
+                </div>
+                <div class="card-content">
+                    <div class="value">
+                        <span class="spinner"></span>
+                    </div>
+                    <div class="unit">%</div>
+                </div>
+            </div>
+            <div class="card" id="timestamp-card">
+                <div class="card-header">
+                    <i data-lucide="clock" class="card-icon time-icon"></i>
+                    <h3>Última lectura</h3>
+                </div>
+                <div class="card-content">
+                    <div class="value">
+                        <span class="spinner"></span>
+                    </div>
+                    <div class="relative-time"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Actuador -->
+        <section class="actuator-section">
+            <div class="section-header">
+                <i data-lucide="lightbulb" class="section-icon"></i>
+                <h2>Actuador remoto</h2>
+                <span class="section-subtitle">LED del ESP32 (señal de alerta del rack)</span>
+            </div>
+            <div class="actuator-body">
+                <div class="actuator-state">
+                    <span id="actuator-led" class="led-indicator" aria-hidden="true"></span>
+                    <div>
+                        <div class="actuator-label">Última orden enviada</div>
+                        <div id="actuator-status" class="actuator-status">Sin órdenes todavía</div>
+                    </div>
+                </div>
+                <div class="actuator-buttons">
+                    <button id="led-on-btn" class="btn btn-primary">
+                        <i data-lucide="power" class="btn-icon"></i>
+                        Encender LED
+                    </button>
+                    <button id="led-off-btn" class="btn btn-secondary">
+                        <i data-lucide="power-off" class="btn-icon"></i>
+                        Apagar LED
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chart Section -->
+        <section class="chart-section">
+            <div class="section-header">
+                <i data-lucide="trending-up" class="section-icon"></i>
+                <h2>Tendencia de los sensores</h2>
+            </div>
+            <div class="chart-container">
+                <canvas id="sensor-chart" aria-label="Temperature and humidity chart"></canvas>
+                <div id="chart-loading" class="loading-overlay">
+                    <span class="spinner"></span>
+                    <span>Cargando gráfica...</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- History Table -->
+        <section class="history-section">
+            <div class="section-header">
+                <i data-lucide="database" class="section-icon"></i>
+                <h2>Historial reciente</h2>
+                <span class="section-subtitle">Últimos 10 registros</span>
+            </div>
+            <div class="table-container">
+                <table id="history-table">
+                    <thead>
+                        <tr>
+                            <th><i data-lucide="calendar" class="table-icon"></i>Fecha/Hora</th>
+                            <th><i data-lucide="thermometer" class="table-icon"></i>Temperatura (°C)</th>
+                            <th><i data-lucide="droplets" class="table-icon"></i>Humedad (%)</th>
+                            <th><i data-lucide="cpu" class="table-icon"></i>Dispositivo</th>
+                        </tr>
+                    </thead>
+                    <tbody id="history-tbody">
+                        <!-- Rows populated by JS -->
+                    </tbody>
+                </table>
+                <div id="history-loading" class="loading-overlay">
+                    <span class="spinner"></span>
+                    <span>Cargando historial...</span>
+                </div>
+            </div>
+            <div class="history-controls">
+                <button id="load-more-btn" class="btn btn-secondary" style="display: none;">
+                    <i data-lucide="chevron-down" class="btn-icon"></i>
+                    Cargar más
+                </button>
+                <button id="reset-history-btn" class="btn btn-secondary">
+                    <i data-lucide="rotate-ccw" class="btn-icon"></i>
+                    Reiniciar
+                </button>
+                <button id="export-csv-btn" class="btn btn-secondary">
+                    <i data-lucide="download" class="btn-icon"></i>
+                    Descargar CSV
+                </button>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <div class="footer-content">
+            <i data-lucide="cloud" class="footer-icon"></i>
+            <p>AWS IoT Core · DynamoDB · Lambda · API Gateway · S3</p>
+        </div>
+    </footer>
+
+    <!-- Error Modal -->
+    <div id="error-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h3>Error</h3>
+            <p id="error-message"></p>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="config.js"></script>
+    <script src="api.js"></script>
+    <script src="ui.js"></script>
+    <script src="chart.js"></script>
+    <script src="main.js"></script>
+    <script src="actuator.js"></script>
+    
+    <!-- Initialize Lucide Icons -->
+    <script>
+        // Initialize icons after DOM is loaded
+        document.addEventListener('DOMContentLoaded', function() {
+            lucide.createIcons();
+        });
+    </script>
+</body>
+
+</html>

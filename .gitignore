@@ -1,0 +1,12 @@
+# Credenciales y certificados: NUNCA subir a GitHub
+credentials.h
+*.pem
+*.pem.crt
+*.pem.key
+certificados/
+
+# Basura del sistema / editores
+.DS_Store
+Thumbs.db
+.vscode/
+build/
